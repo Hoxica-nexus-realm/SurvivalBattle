@@ -1,0 +1,54 @@
+# サバイバルバトロワの設定ファイル
+# 各項目を必要に応じて変更してください
+settings:
+  countdown: 30
+  min_players: 2
+
+teleport:
+  lobby:
+    world: world
+    x: 0.5
+    y: 70.0
+    z: 0.5
+    yaw: 0.0
+    pitch: 0.0
+  waiting:
+    world: survivalbattle_wait
+    x: 0.5
+    y: -60.0
+    z: 0.5
+    yaw: 0.0
+    pitch: 0.0
+
+items:
+  STONE_SWORD: 1
+  BREAD: 5
+
+effects:
+  NIGHT_VISION: "infinite"
+
+# 追加: 表示オプション
+display:
+  tab_hp_enabled: true
+  # フォーマット: {name} と {hp} を使用可能。例: '{name} §7[{hp}❤]'
+  tab_hp_format: "{name} §7[{hp}❤]"
+
+# 追加: ワールドボーダー / PVP 関連設定
+game:
+  collection_time_seconds: 300
+  pvp_time_seconds: 900
+  collection_border_size: 100000
+  pvp_initial_border: 150
+  border_final_size: 5
+  # ワールドボーダー縮小にかかる時間（秒）
+  border_shrink_duration_seconds: 300
+
+# 追加: チーム設定
+teams:
+  enabled: true                     # チーム機能全体の有効/無効
+  allow_selection_in_waiting: true  # 待機場でチーム選択を許可
+  red: true
+  blue: true
+  yellow: true
+  black: true
+  white: true

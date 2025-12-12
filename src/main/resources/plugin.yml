@@ -1,0 +1,9 @@
+name: SurvivalBattle
+version: 1.0.0
+main: ham_sandwitch.plugin.survivalbattle.Main
+api-version: 1.19
+commands:
+  sb:
+    description: SurvivalBattle 管理コマンド
+    usage: /sb <subcommand>
+    aliases: [survivalbattle,sbattle]
