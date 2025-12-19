@@ -44,7 +44,7 @@ public class GameManager {
     private int fakePlayers = 0;
     private final PlayerStateManager playerStateManager;
 
-    
+    // GUI タイトル（識別用）
     private static final String TEAM_GUI_TITLE = ChatColor.AQUA + "チームを選ぶ";
 
     public GameManager(JavaPlugin plugin, Location lobbyLocation, Location waitingLocation) {
@@ -59,13 +59,13 @@ public class GameManager {
         this.teamManager = new TeamManager(plugin);
         this.playerStateManager = new PlayerStateManager(plugin);
 
-        
+        // 過去のUUIDから統計情報をロード
         loadPlayerStats();
     }
 
-    
+    // Player state saved/restore moved to PlayerStateManager
 
-    
+    // --- Getters for delegated event handler ---
     public PlayerSetupManager getPlayerSetupManager() { return playerSetupManager; }
     public Set<UUID> getAlivePlayers() { return teamManager.getAlivePlayers(); }
     public Set<UUID> getIdleSpectators() { return idleSpectators; }
@@ -78,39 +78,45 @@ public class GameManager {
     public String getTeamGuiTitle() { return TEAM_GUI_TITLE; }
     public Phase getPhasePublic() { return currentPhase; }
 
-    
+    // Expose determineWinner for event logic
     public Team determineWinnerPublic() { return determineWinner(); }
 
-    
+    // Save stats asynchronously
     public void savePlayerStatsAsync() {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, this::savePlayerStats);
     }
 
-    
+    /**
+     * 現在のフェーズを取得
+     */
     public Phase getPhase() {
         return currentPhase;
     }
 
-    
+    /**
+     * プレイヤーを待機場へテレポート
+     */
     public void teleportToWaiting(Player p) {
         if (p == null || !p.isOnline()) return;
         p.teleport(waitingLocation);
-        
+        // バックアップがなければ保存しておく（重複保存を避ける）
         try {
             if (!playerStateManager.hasSavedState(p.getUniqueId())) {
                 playerStateManager.savePreMatchState(p);
             }
         } catch (Exception ignored) {}
-        
+        // 待機場用の装備/状態セットアップ
         playerSetupManager.setupWaitingPlayer(p);
         p.sendMessage(ChatColor.GREEN + "✅ 待機場に移動しました。");
     }
 
-    
+    /**
+     * プレイヤーをロビーへテレポート
+     */
     public void teleportToLobby(Player p) {
         if (p == null || !p.isOnline()) return;
         p.teleport(lobbyLocation);
-        
+        // ロビーに戻る際、試合前のバックアップがあれば復元する
         if (playerStateManager.hasSavedState(p.getUniqueId())) {
             try {
                 playerStateManager.restorePostMatchState(p);
@@ -141,7 +147,7 @@ public class GameManager {
         }
     }
 
-    
+    // ゲーム参加者（BossBar/メッセージ対象）を返す
     public java.util.List<Player> getPlayersForBossBar() {
         java.util.List<Player> result = new java.util.ArrayList<>();
         switch (currentPhase) {
@@ -166,69 +172,73 @@ public class GameManager {
         return result;
     }
 
-    
+    // 参加者にだけゲームメッセージを送る
     public void sendGameMessage(String msg) {
         for (Player p : getPlayersForBossBar()) {
             p.sendMessage(msg);
         }
     }
 
-    
+    // 管理者（OP）とコマンド実行者にのみ通知を送る。retryHint=true なら再試行の案内を実行者に付記
     public void sendAdminNotice(CommandSender origin, String msg, boolean retryHint) {
-        
+        // 実行者
         if (origin != null) {
             origin.sendMessage(msg);
             if (retryHint) {
                 origin.sendMessage(ChatColor.GRAY + "同様の操作をもう一度お試しください。改善しない場合は管理者に報告してください。");
             }
         }
-        
+        // OP 全員
         for (Player op : Bukkit.getOnlinePlayers()) {
             if (op.isOp()) {
                 op.sendMessage(msg);
             }
         }
-        
+        // ログにも残す
         plugin.getLogger().info(ChatColor.stripColor(msg));
     }
 
-    
+    /**
+     * ロビーにテレポート
+     */
     public void joinLobby(Player p) {
         if (p == null || !p.isOnline()) return;
 
-        
+        // プレイヤーを待機場所へテレポート
         p.teleport(waitingLocation);
 
-        
+        // プレイヤーのセットアップ
         playerSetupManager.setupWaitingPlayer(p);
 
-        
+        // ★ 2. 修正: 待機ワールドが存在しなかった場合のメッセージロジック
         Main mainInstance = (Main) plugin;
         String missingWorldName = mainInstance.getMissingWaitingWorldName();
 
         if (missingWorldName != null) {
-            
+            // 待機ワールドが存在しなかった場合の警告メッセージ
             p.sendMessage(
                     ChatColor.RED + "§l[警告] " + ChatColor.RED + missingWorldName +
                             ChatColor.YELLOW + "が存在しなかったため" +
                             ChatColor.RED + "ロビーに転送されました"
             );
-            
+            // 転送された座標を表示
             p.sendMessage(ChatColor.GRAY + "設定された待機場所の座標を使用しています: (" + (int)waitingLocation.getX() + ", " + (int)waitingLocation.getY() + ", " + (int)waitingLocation.getZ() + ")");
         } else {
-            
+            // 正常に待機場所に転送された場合のメッセージ
             p.sendMessage(ChatColor.GREEN + "✅ 待機場に参加しました。");
         }
     }
 
-    
+    /**
+     * ゲームを開始
+     */
     public boolean startGame() {
         return startGame(null);
     }
 
-    
+    // Overload: コマンド送信者を受け取る版（後方互換）
     public boolean startGame(CommandSender sender) {
-        
+        // コマンド実行通知（管理者・実行者向け）
         sendAdminNotice(sender, ChatColor.YELLOW + "[運営] ゲーム開始準備コマンドが実行されました。", false);
 
         if (currentPhase != Phase.IDLE) {
@@ -248,16 +258,16 @@ public class GameManager {
             return false;
         }
 
-        
+        // フェーズを COUNTDOWN に設定し、タイマーを開始
         setPhase(Phase.COUNTDOWN);
         gameTimer.setCountdownTime(plugin.getConfig().getInt("settings.countdown", 10));
         gameTimer.start();
 
-        
-        
+        // 重要: 待機場にいるプレイヤーのみを参加対象にするため、
+        // ここではオンラインプレイヤーを移動させない（干渉しない）。
 
         sendGameMessage("[サバイバルバトロワ] ゲームが開始されます。");
-        
+        // Discord 通知（有効なら送信）
         try {
             Main main = (Main) plugin;
             if (main.getDiscordNotifier() != null) {
@@ -271,17 +281,19 @@ public class GameManager {
         return true;
     }
 
-    
+    /**
+     * ゲームを強制終了
+     */
     public boolean stopGame() {
         if (currentPhase == Phase.IDLE || currentPhase == Phase.END) {
             Bukkit.broadcastMessage(ChatColor.RED + "❌ ゲームは進行していません。");
             return false;
         }
 
-        
+        // タイマーを停止
         gameTimer.stop();
 
-        
+        // 参加者（バトルワールドにいるプレイヤー）のみロビーへ戻す
         World battleWorld = worldManager.getBattleWorld();
         if (battleWorld != null) {
             for (Player p : Bukkit.getOnlinePlayers()) {
@@ -292,7 +304,7 @@ public class GameManager {
             }
         }
 
-        
+        // 元参加者をアドベンチャーに（オンラインのみ）
         for (Team t : Team.values()) {
             for (UUID id : teamManager.getTeamMembers().getOrDefault(t, java.util.Collections.emptySet())) {
                 Player op = Bukkit.getPlayer(id);
@@ -302,51 +314,55 @@ public class GameManager {
             }
         }
 
-        
+        // ワールドを削除
         worldManager.deleteBattleWorld();
 
-        
+        // フェーズを END に設定 (内部クリーンアップ用)
         setPhase(Phase.END);
-            
+            // 状態をリセット
             resetGameState();
 
         sendGameMessage(ChatColor.RED + "🛑 ゲームが強制終了されました。");
         return true;
     }
 
-    
+    // Overload: コマンド送信者を受け取る版（後方互換）
     public boolean stopGame(CommandSender sender) {
         return stopGame();
     }
 
-    
+    /**
+     * ゲームの状態をリセット
+     */
     private void resetGameState() {
-        
+        // プレイヤー/チームリストをクリア
         teamManager.clearAll();
         idleSpectators.clear();
 
-        
+        // フェーズを IDLE に戻す
         setPhase(Phase.IDLE);
     }
 
-    
+    /**
+     * フェーズを設定
+     */
     public void setPhase(Phase newPhase) {
         if (currentPhase == newPhase) return;
 
         plugin.getLogger().info("Phase changed from " + currentPhase + " to " + newPhase);
         this.currentPhase = newPhase;
 
-        
+        // フェーズごとの処理
         switch (newPhase) {
             case COUNTDOWN:
-                
+                // Countdown to Collection
                 break;
             case COLLECTION:
-                
+                // Teleport players to battle world
                 teleportPlayersToBattle();
-                
+                // Setup World Border for Collection
                 worldManager.setupCollectionPhaseBorder();
-                
+                // Setup game timer for Collection
                 gameTimer.setGameTime(plugin.getConfig().getInt("game.collection_time_seconds", 600));
                 gameTimer.updateBossBar(ChatColor.GREEN + "収集フェーズ", BarColor.GREEN, true);
                 break;
@@ -357,16 +373,16 @@ public class GameManager {
                 gameTimer.updateBossBar(ChatColor.RED + "PVPフェーズ", BarColor.RED, true);
                 break;
             case END:
-                
+                // Stop timer and announce winner
                 gameTimer.stop();
                 worldManager.deleteBattleWorld();
-                
+                // 勝利処理は別メソッドで行う
                 break;
             case IDLE:
-                
+                // Clean up any remaining boss bars, etc.
                 gameTimer.updateBossBar("Survival Battle - IDLE", BarColor.BLUE, false);
                 gameTimer.resetBorderShrinkInfo();
-                
+                // 3秒後もIDLEならBossBarを完全に除去
                 Bukkit.getScheduler().runTaskLater(plugin, () -> {
                     if (currentPhase == Phase.IDLE) {
                         try { gameTimer.clearBossBar(); } catch (Exception ignored) {}
@@ -376,7 +392,9 @@ public class GameManager {
         }
     }
 
-    
+    /**
+     * プレイヤーをバトルワールドにテレポート
+     */
     private void teleportPlayersToBattle() {
         World battleWorld = worldManager.getBattleWorld();
         if (battleWorld == null) {
@@ -385,7 +403,7 @@ public class GameManager {
             return;
         }
 
-        
+        // 参加しているプレイヤーをリスト化
         List<Player> joinablePlayers = new ArrayList<>();
         for (Player p : Bukkit.getOnlinePlayers()) {
             if (p.getWorld().equals(waitingLocation.getWorld())) {
@@ -402,15 +420,15 @@ public class GameManager {
             return;
         }
 
-        
+        // チーム分け
         teamManager.assignTeams(joinablePlayers, fakePlayers);
 
-        
+        // 各プレイヤーをバトルワールドにテレポート
         for (Player p : joinablePlayers) {
             if (p.isOnline()) {
                 Location safeLoc = TeleportUtil.findSafeLocation(battleWorld.getSpawnLocation());
                 p.teleport(safeLoc);
-                
+                // save pre-match inventory/state before clearing/giving match gear
                 playerStateManager.savePreMatchState(p);
                 playerSetupManager.setupBattlePlayer(p);
                 teamManager.addAlive(p.getUniqueId());
@@ -421,19 +439,19 @@ public class GameManager {
                     p.sendMessage(ChatColor.AQUA + "あなたは " + team.getDisplayName() + ChatColor.AQUA + " です。");
                 }
 
-                
+                // ゲーム開始時の5秒回復系バフ
                 playerSetupManager.applyStartBuffs(p, 5);
             }
         }
 
-        
+        // 観戦者モードのプレイヤーはテレポートしない
     }
 
-    
+    // チーム選択GUIを開く（待機場限定）
     private void openTeamSelectGui(Player p) {
         if (p == null || !p.isOnline()) return;
         Inventory inv = Bukkit.createInventory(p, 9, TEAM_GUI_TITLE);
-        
+        // RED ボタン
         ItemStack red = new ItemStack(Material.RED_WOOL);
         ItemMeta rm = red.getItemMeta();
         if (rm != null) {
@@ -442,7 +460,7 @@ public class GameManager {
             rm.setLore(java.util.Collections.singletonList(ChatColor.GRAY + "人数: " + count));
             red.setItemMeta(rm);
         }
-        
+        // BLUE ボタン
         ItemStack blue = new ItemStack(Material.BLUE_WOOL);
         ItemMeta bm = blue.getItemMeta();
         if (bm != null) {
@@ -456,7 +474,7 @@ public class GameManager {
         p.openInventory(inv);
     }
 
-    
+    // GUI クリック処理
     private void handleTeamSelectClick(Player p, ItemStack clicked) {
         if (clicked == null || clicked.getType() == Material.AIR) return;
         ItemMeta meta = clicked.getItemMeta();
@@ -466,14 +484,14 @@ public class GameManager {
         if (name.contains("Blue")) target = Team.BLUE;
         if (target == null) return;
 
-        
+        // COUNTDOWN 以降は変更不可にする場合はここで制御（今回は待機場利用想定）
 
         setPlayerTeam(p, target);
         p.sendMessage(ChatColor.AQUA + "チームを " + target.getDisplayName() + ChatColor.AQUA + " に変更しました。");
-        
+        // OP へ参加通知
         String notice = ChatColor.YELLOW + "[運営] " + p.getName() + ChatColor.RESET + " が " + target.getDisplayName() + ChatColor.RESET + " に参加しました";
         sendAdminNotice(null, notice, false);
-        
+        // 再描画
         Bukkit.getScheduler().runTask(plugin, () -> openTeamSelectGui(p));
     }
 
@@ -481,22 +499,26 @@ public class GameManager {
         teamManager.setPlayerTeam(p, team);
     }
 
-    
-    
+    /**
+     * 参加可能なプレイヤーをランダムにチーム分け
+     */
+    // Team assignment moved to TeamManager
 
-    
+    /**
+     * ゲーム終了処理
+     */
     public void endGame(Team winner) {
-        
+        // Stop timer immediately and perform teleport/cleanup before deleting the world
         gameTimer.stop();
 
         String message;
         if (winner != null) {
             message = ChatColor.GOLD + "🏆 " + winner.getDisplayName() + ChatColor.GOLD + " の勝利！";
-            
+            // 統計情報更新
             for (UUID uuid : teamManager.getTeamMembers().get(winner)) {
                 getPlayerStats(uuid).incrementWins();
             }
-            
+            // 敗北統計情報更新
             for (Team team : Team.values()) {
                 if (team != winner) {
                     for (UUID uuid : teamManager.getTeamMembers().get(team)) {
@@ -506,14 +528,14 @@ public class GameManager {
             }
         } else {
             message = ChatColor.YELLOW + "引き分けです。";
-            
+            // 引き分け時は誰も勝利/敗北にカウントしない
         }
 
         sendGameMessage(ChatColor.AQUA + "━━━━━━ ゲーム終了 ━━━━━━");
         sendGameMessage(message);
         sendGameMessage(ChatColor.AQUA + "━━━━━━━━━━━━━━━━━━━━━━");
 
-        
+        // Discord 通知（有効なら送信）
         try {
             Main main = (Main) plugin;
             if (main.getDiscordNotifier() != null) {
@@ -525,11 +547,11 @@ public class GameManager {
             }
         } catch (Exception ignored) {}
 
-        
+        // Run teleport and cleanup on main thread immediately to ensure players are returned
         Bukkit.getScheduler().runTask(plugin, () -> {
             World battleWorld = worldManager.getBattleWorld();
 
-            
+            // 1) Teleport all known participants (team members) back to lobby and restore/set state
             for (UUID uuid : teamManager.getAllParticipants()) {
                 Player p = Bukkit.getPlayer(uuid);
                 if (p != null && p.isOnline()) {
@@ -549,7 +571,7 @@ public class GameManager {
                 }
             }
 
-            
+            // 2) Additionally, ensure any online player currently in the battle world is returned
             if (battleWorld != null) {
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     if (p != null && p.isOnline() && p.getWorld().equals(battleWorld)) {
@@ -570,7 +592,7 @@ public class GameManager {
                 }
             }
 
-            
+            // 3) Ensure all participants are set to ADVENTURE mode (covers offline->online inconsistencies)
             for (Team t : Team.values()) {
                 for (UUID id : teamManager.getTeamMembers().getOrDefault(t, java.util.Collections.emptySet())) {
                     Player op = Bukkit.getPlayer(id);
@@ -580,31 +602,33 @@ public class GameManager {
                 }
             }
 
-            
+            // 状態をリセット
             resetGameState();
 
-            
+            // フェーズを END に設定してワールド削除等の後処理を行う
             setPhase(Phase.END);
 
-            
+            // 統計情報を保存
             savePlayerStats();
         });
     }
 
-    
+    /**
+     * 時間切れ処理
+     */
     public void onTimeUp() {
         switch (currentPhase) {
             case COUNTDOWN:
                 setPhase(Phase.COLLECTION);
-                gameTimer.start(); 
+                gameTimer.start(); // コレクションフェーズのタイマーを再開
                 break;
             case COLLECTION:
-                
+                // 収集フェーズ終了 -> PVPフェーズへ
                 setPhase(Phase.PVP);
-                gameTimer.start(); 
+                gameTimer.start(); // PVPフェーズのタイマーを再開
                 break;
             case PVP:
-                
+                // PVPフェーズ終了 -> 勝敗判定
                 Team winner = determineWinner();
                 endGame(winner);
                 break;
@@ -613,17 +637,23 @@ public class GameManager {
         }
     }
 
-    
+    /**
+     * 生存プレイヤー数から勝者を決定
+     */
     private Team determineWinner() {
         return teamManager.determineWinner();
     }
 
-    
-    
+    /**
+     * プレイヤーの死亡処理
+     */
+    // Event handlers have been moved to GameEventListener to reduce GameManager responsibilities.
 
-    
+    // --- ユーティリティ ---
 
-    
+    /**
+     * ゲーム状態表示
+     */
     public String getGameStatus(CommandSender sender) {
         StringBuilder sb = new StringBuilder();
         sb.append(ChatColor.BLUE).append("━━━━━ SurvivalBattle 状態 ━━━━━\n");
@@ -656,26 +686,28 @@ public class GameManager {
         return sb.toString();
     }
 
-    
+    /**
+     * 統計情報取得
+     */
     public PlayerStats getPlayerStats(UUID uuid) {
         return playerStats.computeIfAbsent(uuid, k -> new PlayerStats());
     }
 
-    
+    // --- データのロード/セーブ ---
 
     private void loadPlayerStats() {
-        
-        
+        // 設定ファイルから統計情報をロードする処理 (省略)
+        // config.ymlなどに保存されていると仮定
     }
 
     private void savePlayerStats() {
-        
-        
+        // 設定ファイルに統計情報を保存する処理 (省略)
+        // config.ymlなどに保存されていると仮定
     }
 
     
 
-    
+    // --- ゲッター/セッター ---
 
     public Phase getCurrentPhase() {
         return currentPhase;
@@ -693,7 +725,7 @@ public class GameManager {
         debugManager.setDebugMode(debugMode);
     }
 
-    
+    // 後方互換のためのエイリアス
     public void setDebug(boolean enabled) {
         debugManager.setDebug(enabled);
     }
@@ -711,7 +743,9 @@ public class GameManager {
         return fakePlayers;
     }
 
-    
+    /**
+     * Remove a player from team maps and alive set; returns their previous team or null.
+     */
     public Team removePlayerFromTeams(UUID uuid) {
         return teamManager.removePlayer(uuid);
     }
@@ -723,9 +757,11 @@ public class GameManager {
         savePlayerStats();
     }
 
-    
+    // ===== 追加: GameTimer から参照されるメソッド群 =====
 
-    
+    /**
+     * Tabリストのプレイヤー名にHPを表示（設定で有効な場合のみ）
+     */
     public void updateTabHpDisplay() {
         boolean enabled = plugin.getConfig().getBoolean("display.tab_hp_enabled", true);
         String format = plugin.getConfig().getString("display.tab_hp_format", "{name} §7[{hp}❤]");
@@ -742,7 +778,9 @@ public class GameManager {
         }
     }
 
-    
+    /**
+     * カウントダウン終了→収集フェーズ開始
+     */
     public void startCollectionPhase() {
         setPhase(Phase.COLLECTION);
         int secs = plugin.getConfig().getInt("game.collection_time_seconds", 600);
@@ -750,7 +788,9 @@ public class GameManager {
         sendGameMessage(ChatColor.GREEN + "🪓 資源収集フェーズ開始！");
     }
 
-    
+    /**
+     * 収集フェーズ終了→PVPフェーズ開始
+     */
     public void startPvpPhase() {
         setPhase(Phase.PVP);
         int pvpSecs = plugin.getConfig().getInt("game.pvp_time_seconds", 900);
@@ -759,22 +799,22 @@ public class GameManager {
         gameTimer.setGameTime(pvpSecs);
         gameTimer.setBorderShrinkDuration(shrinkSecs);
 
-        
+        // ワールドボーダー縮小を開始（現在サイズ→finalSize へ）
         World battle = worldManager.getBattleWorld();
         if (battle != null) {
             worldManager.startBorderShrink(finalSize, shrinkSecs);
-            
+            // チーム単位でランダム地点にTP
             Map<Team, Location> spawnMap = new EnumMap<>(Team.class);
             boolean teamEnabled = plugin.getConfig().getBoolean("teams.enabled", true);
             int protect = plugin.getConfig().getInt("pvp.random_spawn.spawn_protection_seconds", 3);
             for (Team t : Team.values()) {
-                if (!teamEnabled) continue; 
+                if (!teamEnabled) continue; // 個別TPに切替
                 spawnMap.put(t, worldManager.findRandomLocationInBorder(30, 64));
             }
             for (Player op : Bukkit.getOnlinePlayers()) {
                 UUID id = op.getUniqueId();
                 Team t = teamManager.getTeam(id);
-                if (t == null) continue; 
+                if (t == null) continue; // 非参加者
                 Location dest;
                 if (teamEnabled) {
                     dest = spawnMap.get(t);
@@ -792,7 +832,7 @@ public class GameManager {
         sendGameMessage(ChatColor.RED + "⚔️ PVPフェーズ開始！");
     }
 
-    
+    // デバッグ: フェーズをスキップ
     public void debugSkipPhase(CommandSender sender) {
         if (!debugManager.isDebugMode()) {
             if (sender != null) sender.sendMessage(ChatColor.YELLOW + "デバッグモード中のみ使用できます。/sb debug on で有効化してください。");
@@ -810,12 +850,16 @@ public class GameManager {
         }
     }
 
-    
+    /**
+     * ゲームを終了し全員をロビーへ送還（勝者指定可）
+     */
     public void finalizeGameAndTeleportAll(Team winner) {
         endGame(winner);
     }
 
-    
+    /**
+     * SbCommand から呼ばれる状態表示（文字列のみ返す）
+     */
     public String getGameStats() {
         StringBuilder sb = new StringBuilder();
         sb.append(ChatColor.BLUE).append("━━━━━ SurvivalBattle 状態 ━━━━━\n");

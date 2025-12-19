@@ -1,0 +1,281 @@
+package ham_sandwitch.plugin.survivalbattle.game;
+
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+import org.bukkit.ChatColor;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.ItemStack;
+
+import ham_sandwitch.plugin.survivalbattle.game.GameManager.Team;
+
+public class GameEventListener implements Listener {
+    private final GameManager gm;
+
+    public GameEventListener(GameManager gm) {
+        this.gm = gm;
+    }
+
+    @EventHandler
+    public void onPlayerDeath(PlayerDeathEvent event) {
+        try {
+            Player victim = event.getEntity();
+            if (victim == null) return;
+            UUID victimId = victim.getUniqueId();
+
+            Set<UUID> alive = gm.getAlivePlayers();
+            if (!alive.contains(victimId)) return;
+
+            alive.remove(victimId);
+
+            gm.getPlayerSetupManager().setupSpectator(victim);
+
+            Player killer = victim.getKiller();
+            if (killer != null) {
+                gm.getPlayerStats(killer.getUniqueId()).incrementKills();
+            }
+            gm.getPlayerStats(victimId).incrementDeaths();
+
+            if (alive.size() <= 1) {
+                Team winner = gm.determineWinnerPublic();
+                gm.endGame(winner);
+            }
+        } catch (Exception e) {
+            gm.getPlugin().getLogger().warning("Error in onPlayerDeath: " + e.getMessage());
+        }
+    }
+
+    @EventHandler
+    public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
+        try {
+            if (!(event.getEntity() instanceof Player)) return;
+
+            Player victim = (Player) event.getEntity();
+            if (victim == null) return;
+
+            Player damager = null;
+            if (event.getDamager() instanceof Player) {
+                damager = (Player) event.getDamager();
+            } else if (event.getDamager() instanceof org.bukkit.entity.Projectile) {
+                org.bukkit.entity.Projectile proj = (org.bukkit.entity.Projectile) event.getDamager();
+                if (proj.getShooter() instanceof Player) {
+                    damager = (Player) proj.getShooter();
+                }
+            }
+
+            World battleWorld = gm.getWorldManagerPublic().getBattleWorld();
+            World vw = victim.getWorld();
+            World waitingWorld = gm.getWaitingLocation() != null ? gm.getWaitingLocation().getWorld() : null;
+
+            if (waitingWorld != null && vw != null && vw.equals(waitingWorld)) {
+                event.setCancelled(true);
+                return;
+            }
+
+            if (battleWorld != null && vw != null && vw.equals(battleWorld)) {
+                if (!gm.getAlivePlayers().contains(victim.getUniqueId())) {
+                    event.setCancelled(true);
+                    return;
+                }
+
+                if (gm.getPhasePublic() != GameManager.Phase.PVP) {
+                    event.setCancelled(true);
+                    if (damager != null) damager.sendMessage(ChatColor.RED + "❌ PVPフェーズではありません。");
+                    return;
+                }
+
+                if (damager != null) {
+                    Map<UUID, Team> playerTeams = gm.getPlayerTeams();
+                    Team victimTeam = playerTeams.get(victim.getUniqueId());
+                    Team damagerTeam = playerTeams.get(damager.getUniqueId());
+                    if (victimTeam != null && victimTeam.equals(damagerTeam)) {
+                        event.setCancelled(true);
+                        damager.sendMessage(ChatColor.RED + "❌ チームメイトを攻撃することはできません。");
+                    }
+                }
+            }
+        } catch (Exception e) {
+            gm.getPlugin().getLogger().warning("Error in onEntityDamageByEntity: " + e.getMessage());
+        }
+    }
+
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        try {
+            Player p = event.getPlayer();
+            if (p == null) return;
+
+            if (gm.getPhasePublic() != GameManager.Phase.IDLE) {
+                boolean wasParticipant = false;
+                for (GameManager.Team t : GameManager.Team.values()) {
+                    if (gm.getTeamMembers().getOrDefault(t, java.util.Collections.emptySet()).contains(p.getUniqueId())) {
+                        wasParticipant = true;
+                        break;
+                    }
+                }
+
+                if (wasParticipant) {
+                    if (gm.getPhasePublic() == GameManager.Phase.COLLECTION) {
+                        World battle = gm.getWorldManagerPublic().getBattleWorld();
+                        if (battle != null) {
+                            Location safeLoc = TeleportUtil.findSafeLocation(battle.getSpawnLocation());
+                            if (safeLoc != null) p.teleport(safeLoc);
+                            gm.getPlayerSetupManager().setupBattlePlayer(p);
+                            gm.getAlivePlayers().add(p.getUniqueId());
+                            p.sendMessage(ChatColor.GREEN + "✅ 収集フェーズに再参加しました。");
+                        }
+                    } else if (gm.getPhasePublic() == GameManager.Phase.PVP) {
+                        gm.getAlivePlayers().remove(p.getUniqueId());
+                        gm.getPlayerSetupManager().setupLobbyPlayer(p);
+                        p.teleport(gm.getLobbyLocation());
+                        p.sendMessage(ChatColor.RED + "❌ PVPフェーズ中に退出したため、失格となりました。ロビーに戻ります。");
+                    } else {
+                        World battle = gm.getWorldManagerPublic().getBattleWorld();
+                        if (battle != null) gm.getPlayerSetupManager().setupGameSpectator(p, battle);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            gm.getPlugin().getLogger().warning("Error in onPlayerJoin: " + e.getMessage());
+        }
+    }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        try {
+            UUID uuid = event.getPlayer().getUniqueId();
+
+            if (gm.getAlivePlayers().contains(uuid)) {
+                if (gm.getPhasePublic() == GameManager.Phase.COLLECTION) {
+                    
+                } else if (gm.getPhasePublic() == GameManager.Phase.PVP) {
+                    gm.getAlivePlayers().remove(uuid);
+                    gm.getPlayerStats(uuid).incrementDeaths();
+                    gm.getPlayerStats(uuid).incrementLosses();
+
+                    if (gm.getAlivePlayers().size() <= 1) {
+                        Team winner = gm.determineWinnerPublic();
+                        gm.endGame(winner);
+                    }
+                }
+            }
+
+            gm.getIdleSpectators().remove(uuid);
+
+            if (gm.getPhasePublic() == GameManager.Phase.IDLE) {
+                gm.removePlayerFromTeams(uuid);
+            }
+
+            gm.savePlayerStatsAsync();
+        } catch (Exception e) {
+            gm.getPlugin().getLogger().warning("Error in onPlayerQuit: " + e.getMessage());
+        }
+    }
+
+    @EventHandler
+    public void onInventoryClick(InventoryClickEvent event) {
+        try {
+            Player p = (Player) event.getWhoClicked();
+            if (p == null) return;
+            if (event.getView() != null && gm.getTeamGuiTitle().equals(event.getView().getTitle())) {
+                event.setCancelled(true);
+                
+                gm.getPlugin().getServer().getScheduler().runTask(gm.getPlugin(), () -> gm.getPlugin().getServer().getScheduler());
+                gm.getPlugin().getServer().getScheduler().runTask(gm.getPlugin(), () -> gm.getPlugin().getServer());
+                
+                
+                gm.getPlugin().getServer().getScheduler().runTask(gm.getPlugin(), () -> gm.getPlugin().getServer());
+                
+                return;
+            }
+
+            ItemStack currentItem = event.getCurrentItem();
+            if (currentItem == null || currentItem.getType() == Material.AIR) return;
+
+            World battleWorld = gm.getWorldManagerPublic().getBattleWorld();
+            World pw = p.getWorld();
+            if (pw == null || gm.getWaitingLocation() == null || gm.getWaitingLocation().getWorld() == null) return;
+
+            boolean inWaiting = pw.equals(gm.getWaitingLocation().getWorld());
+            boolean inBattle = (battleWorld != null && pw.equals(battleWorld));
+
+            if (inWaiting || inBattle) return;
+        } catch (Exception e) {
+            gm.getPlugin().getLogger().warning("Error in onInventoryClick: " + e.getMessage());
+        }
+    }
+
+    @EventHandler
+    public void onPlayerInteractEntity(PlayerInteractEntityEvent event) {
+        try {
+            Player p = event.getPlayer();
+            if (p == null) return;
+            World battleWorld = gm.getWorldManagerPublic().getBattleWorld();
+            World pw = p.getWorld();
+            if (pw == null || gm.getWaitingLocation() == null || gm.getWaitingLocation().getWorld() == null) return;
+
+            boolean inWaiting = pw.equals(gm.getWaitingLocation().getWorld());
+            boolean inBattle = (battleWorld != null && pw.equals(battleWorld));
+
+            if (inWaiting || inBattle) return;
+        } catch (Exception e) {
+            gm.getPlugin().getLogger().warning("Error in onPlayerInteractEntity: " + e.getMessage());
+        }
+    }
+
+    @EventHandler
+    public void onPlayerInteract(PlayerInteractEvent event) {
+        try {
+            Player p = event.getPlayer();
+            if (p == null || !p.isOnline()) return;
+            if (p.getWorld() == null || gm.getWaitingLocation() == null || gm.getWaitingLocation().getWorld() == null) return;
+            if (!p.getWorld().equals(gm.getWaitingLocation().getWorld())) return;
+
+            ItemStack item = p.getInventory().getItemInMainHand();
+            if (item == null || item.getType() == Material.AIR) return;
+            if (item.getItemMeta() == null) return;
+            String name = item.getItemMeta().getDisplayName() == null ? "" : item.getItemMeta().getDisplayName();
+
+            if (name.contains("ロビーに戻る")) {
+                event.setCancelled(true);
+                gm.teleportToLobby(p);
+                return;
+            }
+            if (name.contains("ゲーム開始")) {
+                event.setCancelled(true);
+                if (gm.getPhasePublic() == GameManager.Phase.IDLE) {
+                    gm.startGame();
+                } else {
+                    p.sendMessage(ChatColor.YELLOW + "現在はゲームを開始できません。");
+                }
+                return;
+            }
+            if (name.contains("観戦モード")) {
+                event.setCancelled(true);
+                gm.getPlayerSetupManager().setupIdleSpectator(p);
+                return;
+            }
+            if (name.contains("チーム選択")) {
+                event.setCancelled(true);
+                gm.getPlugin().getServer().getScheduler().runTask(gm.getPlugin(), () -> gm.getPlugin().getServer());
+                
+            }
+        } catch (Exception e) {
+            gm.getPlugin().getLogger().warning("Error in onPlayerInteract: " + e.getMessage());
+        }
+    }
+}
+

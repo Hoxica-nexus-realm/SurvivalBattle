@@ -14,7 +14,7 @@ public class Main extends JavaPlugin {
     private GameManager gameManager;
     private ham_sandwitch.plugin.survivalbattle.discord.DiscordNotifier discordNotifier;
     private static Main instance;
-    private String missingWaitingWorldName = null; 
+    private String missingWaitingWorldName = null; // ★ 1. 追加: 存在しない待機ワールド名を保持
 
     @Override
     public void onEnable() {
@@ -23,7 +23,7 @@ public class Main extends JavaPlugin {
 
         World defaultWorld = getServer().getWorlds().get(0);
 
-        
+        // Lobby location setup
         double x = getConfig().getDouble("teleport.lobby.x", defaultWorld.getSpawnLocation().getX());
         double y = getConfig().getDouble("teleport.lobby.y", defaultWorld.getSpawnLocation().getY());
         double z = getConfig().getDouble("teleport.lobby.z", defaultWorld.getSpawnLocation().getZ());
@@ -40,7 +40,7 @@ public class Main extends JavaPlugin {
 
         Location lobbyLocation = new Location(lobbyWorld, x, y, z, yaw, pitch);
 
-        
+        // Waiting location setup
         double waitX = getConfig().getDouble("teleport.waiting.x", x);
         double waitY = getConfig().getDouble("teleport.waiting.y", y);
         double waitZ = getConfig().getDouble("teleport.waiting.z", z);
@@ -50,7 +50,7 @@ public class Main extends JavaPlugin {
 
         World waitingWorld = getServer().getWorld(waitWorldName);
         if (waitingWorld == null) {
-            
+            // 待機ワールドが未ロード/未生成の場合は作成して読み込む
             getLogger().warning("Waiting world '" + waitWorldName + "' not found. Trying to create/load it now...");
             try {
                 waitingWorld = new WorldCreator(waitWorldName).createWorld();
@@ -59,18 +59,18 @@ public class Main extends JavaPlugin {
             }
 
             if (waitingWorld == null) {
-                
+                // それでも取得できない場合のみロビーワールドへフォールバック（座標も待機場のままにしないよう通知）
                 getLogger().warning("Waiting world could not be created/loaded. Falling back to lobby world '" + lobbyWorld.getName() + "'.");
                 waitingWorld = lobbyWorld;
-                
+                // フォールバックしたら座標もロビーの安全位置に合わせる
                 waitX = lobbyWorld.getSpawnLocation().getX();
                 waitY = lobbyWorld.getSpawnLocation().getY();
                 waitZ = lobbyWorld.getSpawnLocation().getZ();
                 waitYaw = lobbyWorld.getSpawnLocation().getYaw();
                 waitPitch = lobbyWorld.getSpawnLocation().getPitch();
-                this.missingWaitingWorldName = waitWorldName; 
+                this.missingWaitingWorldName = waitWorldName; // フォールバックしたことを通知するため保持
             } else {
-                
+                // 正常に作成/読み込みできた
                 this.missingWaitingWorldName = null;
                 getLogger().info("Waiting world '" + waitWorldName + "' created/loaded successfully.");
             }
@@ -80,11 +80,11 @@ public class Main extends JavaPlugin {
 
         this.gameManager = new GameManager(this, lobbyLocation, waitingLocation);
 
-        
+        // Initialize Discord notifier (if enabled in config)
         discordNotifier = new ham_sandwitch.plugin.survivalbattle.discord.DiscordNotifier(this, gameManager);
         try { discordNotifier.init(); } catch (Exception e) { getLogger().warning("DiscordNotifier init failed: " + e.getMessage()); }
 
-        
+        // Register event listener separated from GameManager to reduce responsibilities
         getServer().getPluginManager().registerEvents(new ham_sandwitch.plugin.survivalbattle.game.GameEventListener(gameManager), this);
 
         getCommand("sb").setExecutor(new SbCommand(gameManager, this));
@@ -116,7 +116,7 @@ public class Main extends JavaPlugin {
         return discordNotifier;
     }
 
-    
+    // ★ 3. 追加: 存在しない待機ワールド名を取得するゲッター
     public String getMissingWaitingWorldName() {
         return missingWaitingWorldName;
     }

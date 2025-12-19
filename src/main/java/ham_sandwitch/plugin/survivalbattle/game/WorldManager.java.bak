@@ -22,9 +22,9 @@ public class WorldManager {
     private final JavaPlugin plugin;
     private World battleWorld;
     
-    
+    // 収集フェーズのデフォルト大幅に拡張
     private static final int COLLECTION_BORDER_SIZE = 100000;
-    
+    // PVP フェーズの初期ボーダー（デフォルト）
     private static final int DEFAULT_PVP_INITIAL_BORDER = 150;
     private static final double BORDER_DAMAGE = 0.5;
     
@@ -32,19 +32,25 @@ public class WorldManager {
         this.plugin = plugin;
     }
 
-    
+    /**
+     * 収集フェーズ開始時のワールドボーダー設定（設定値に基づく）
+     */
     public void setupCollectionPhaseBorder() {
         int size = plugin.getConfig().getInt("game.collection_border_size", COLLECTION_BORDER_SIZE);
         setCollectionBorder(size);
     }
 
-    
+    /**
+     * PVPフェーズ開始時のワールドボーダー設定（設定値に基づく）
+     */
     public void setupPVPPhaseBorder() {
         double size = plugin.getConfig().getDouble("game.pvp_initial_border", DEFAULT_PVP_INITIAL_BORDER);
         setPvpBorder(size);
     }
     
-    
+    /**
+     * 新しいバトルワールドを生成
+     */
     public boolean createBattleWorld() {
         deleteBattleWorld();
         
@@ -61,20 +67,22 @@ public class WorldManager {
         return true;
     }
     
-    
+    /**
+     * バトルワールドの初期設定
+     */
     private void setupBattleWorld() {
         if (battleWorld == null) return;
         
         battleWorld.setTime(0);
         battleWorld.setDifficulty(Difficulty.NORMAL);
         
-        
+        // ゲームルール設定
         battleWorld.setGameRule(GameRule.DO_DAYLIGHT_CYCLE, true);
-        battleWorld.setGameRule(GameRule.DO_MOB_SPAWNING, false);  
+        battleWorld.setGameRule(GameRule.DO_MOB_SPAWNING, false);  // ★ MOB 無効化
         battleWorld.setGameRule(GameRule.KEEP_INVENTORY, false);
         battleWorld.setGameRule(GameRule.ANNOUNCE_ADVANCEMENTS, false);
         battleWorld.setGameRule(GameRule.DO_FIRE_TICK, true);
-        battleWorld.setGameRule(GameRule.DO_WEATHER_CYCLE, false);  
+        battleWorld.setGameRule(GameRule.DO_WEATHER_CYCLE, false);  // ★ 天候無効化
         battleWorld.setGameRule(GameRule.DO_MOB_LOOT, true);
         battleWorld.setGameRule(GameRule.DO_TILE_DROPS, true);
         battleWorld.setGameRule(GameRule.RANDOM_TICK_SPEED, 3);
@@ -87,7 +95,7 @@ public class WorldManager {
         
         plugin.getLogger().info("Battle world created: " + battleWorld.getName());
 
-        
+        // WorldGuard の保護があれば自動で解除を試みる
         try {
             clearWorldGuardRegions(battleWorld);
         } catch (Exception e) {
@@ -95,15 +103,18 @@ public class WorldManager {
         }
     }
 
-    
+    /**
+     * WorldGuard の保護（リージョン）を自動で解除する。WorldGuard が存在しない場合は何もしない。
+     * この実装は WorldGuard の複数バージョンを想定し、リフレクションで安全に呼び出します。
+     */
     @SuppressWarnings({"unchecked","rawtypes"})
     private void clearWorldGuardRegions(World world) {
         if (world == null) return;
         if (Bukkit.getPluginManager().getPlugin("WorldGuard") == null) {
-            return; 
+            return; // WorldGuard が無ければ何もしない
         }
 
-        
+        // まずは古い/一般的な Bukkit プラグインラッパー経由のAPIを試す
         try {
             Object wgPlugin = Bukkit.getPluginManager().getPlugin("WorldGuard");
             Class<?> wgPluginClass = Class.forName("com.sk89q.worldguard.bukkit.WorldGuardPlugin");
@@ -128,19 +139,19 @@ public class WorldManager {
                 }
             }
         } catch (ClassNotFoundException cnfe) {
-            
+            // クラスが無ければ次の方法を試す
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to clear WorldGuard regions via legacy API: " + e.getMessage());
         }
 
-        
+        // 近年の WorldGuard/WorldEdit の分離されたAPI（WorldGuard.getInstance() 経由）を試す
         try {
             Class<?> wgClass = Class.forName("com.sk89q.worldguard.WorldGuard");
             Object wgInst = wgClass.getMethod("getInstance").invoke(null);
             Object platform = wgClass.getMethod("getPlatform").invoke(wgInst);
             Object container = platform.getClass().getMethod("getRegionContainer").invoke(platform);
 
-            
+            // WorldEdit の BukkitAdapter を使って org.bukkit.World -> WorldEdit world に変換
             Class<?> bukkitAdapterClass = Class.forName("com.sk89q.worldedit.bukkit.BukkitAdapter");
             Method adapt = bukkitAdapterClass.getMethod("adapt", org.bukkit.World.class);
             Object weWorld = adapt.invoke(null, world);
@@ -172,7 +183,9 @@ public class WorldManager {
         }
     }
     
-    
+    /**
+     * PVPフェーズ用にボーダーを初期サイズに設定（可変版）
+     */
     public void setPvpBorder(double size) {
         if (battleWorld == null) return;
         
@@ -183,7 +196,9 @@ public class WorldManager {
         plugin.getLogger().info("PVP border set: " + size);
     }
 
-    
+    /**
+     * 収集フェーズ用のボーダーサイズを設定
+     */
     public void setCollectionBorder(int size) {
         if (battleWorld == null) return;
         WorldBorder border = battleWorld.getWorldBorder();
@@ -192,18 +207,22 @@ public class WorldManager {
         plugin.getLogger().info("Collection border set: " + size);
     }
     
-    
+    /**
+     * ワールドボーダーを縮小開始（最終サイズと秒数を指定）
+     */
     public void startBorderShrink(double finalSize, int durationSeconds) {
         if (battleWorld == null) return;
         
         WorldBorder border = battleWorld.getWorldBorder();
-        
+        // 設定されている現在サイズから finalSize に duration で縮小
         border.setSize(finalSize, durationSeconds);
         
         plugin.getLogger().info("Border shrinking to " + finalSize + " over " + durationSeconds + "s");
     }
 
-    
+    /**
+     * 現在のワールドボーダー内からランダムに安全位置を見つける
+     */
     public Location findRandomLocationInBorder(int tries, int minY) {
         if (battleWorld == null) return null;
         WorldBorder border = battleWorld.getWorldBorder();
@@ -221,7 +240,9 @@ public class WorldManager {
         return getBattleSpawnLocation();
     }
     
-    
+    /**
+     * バトルワールドのスポーン地点を取得
+     */
     public Location getBattleSpawnLocation() {
         if (battleWorld == null) return null;
         
@@ -231,7 +252,9 @@ public class WorldManager {
         return TeleportUtil.findSafeLocation(spawn);
     }
     
-    
+    /**
+     * 中央から半径50以内のランダムな安全位置を取得
+     */
     public Location getRandomSafeLocation() {
         if (battleWorld == null) return null;
         
@@ -257,7 +280,9 @@ public class WorldManager {
         return TeleportUtil.findSafeLocation(fallback);
     }
     
-    
+    /**
+     * バトルワールドをアンロードし、フォルダを削除
+     */
     public void deleteBattleWorld() {
         if (battleWorld == null) return;
         
@@ -266,24 +291,27 @@ public class WorldManager {
             p.teleport(Bukkit.getWorlds().get(0).getSpawnLocation());
         }
 
-        
+        // 保存してからアンロードする。worldFolder を先に取得しておく。
         File worldFolder = battleWorld.getWorldFolder();
 
-        
+        // try to save and unload the world cleanly
         boolean unloaded = Bukkit.unloadWorld(battleWorld, true);
         if (unloaded) {
-            
+            // clear reference immediately to avoid races
             battleWorld = null;
 
-            
+            // 削除は非同期で行い、結果をメインスレッドでログする
             final File folderToDelete = worldFolder;
-            
+            // Schedule deletion attempts with retries (async). 初回遅延を短めに設定
             scheduleFolderDeletion(folderToDelete, 3, 40L, worldName);
         } else {
             plugin.getLogger().warning("Failed to unload world: " + worldName);
         }
     }
-    
+    /**
+     * フォルダを非同期で再帰的に削除するヘルパー。
+     * 成功したかどうかを返す。
+     */
     private boolean deleteFolderAsync(File folder) {
         if (folder == null) return true;
         boolean allDeleted = true;
@@ -317,7 +345,10 @@ public class WorldManager {
         return allDeleted;
     }
 
-    
+    /**
+     * 試行回数つきでフォルダ削除をスケジュールする。
+     * このメソッドはメインスレッドから呼ぶ。
+     */
     private void scheduleFolderDeletion(File folder, int attempts, long delayTicks, String worldName) {
         if (folder == null) {
             Bukkit.getScheduler().runTask(plugin, () -> plugin.getLogger().info("No world folder to delete: " + worldName));
@@ -341,7 +372,7 @@ public class WorldManager {
                     return;
                 }
 
-                
+                // schedule another attempt with increased delay
                 long nextDelay = Math.max(20L, delayTicks * 2);
                 Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, this, nextDelay);
             }
@@ -356,4 +387,3 @@ public class WorldManager {
         return battleWorld != null;
     }
 }
-

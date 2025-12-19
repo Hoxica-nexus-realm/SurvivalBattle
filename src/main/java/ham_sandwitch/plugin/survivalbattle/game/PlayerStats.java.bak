@@ -16,7 +16,7 @@ public class PlayerStats {
     public int getWins() { return wins; }
     public int getLosses() { return losses; }
 
-    
+    // 追加: 統計計算メソッド
     public int getGamesPlayed() {
         return wins + losses;
     }
@@ -47,4 +47,3 @@ public class PlayerStats {
                ", Losses: " + losses;
     }
 }
-

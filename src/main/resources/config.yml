@@ -27,13 +27,13 @@ items:
 effects:
   NIGHT_VISION: "infinite"
 
-# 追加: 表示オプション
+#  表示オプション
 display:
   tab_hp_enabled: true
   # フォーマット: {name} と {hp} を使用可能。例: '{name} §7[{hp}❤]'
   tab_hp_format: "{name} §7[{hp}❤]"
 
-# 追加: ワールドボーダー / PVP 関連設定
+# ワールドボーダー / PVP 関連設定
 game:
   collection_time_seconds: 300
   pvp_time_seconds: 900
@@ -52,3 +52,16 @@ teams:
   yellow: true
   black: true
   white: true
+
+# Discord 通知設定
+discord:
+  enabled: false
+  use_jda: false            # true の場合 JDA を利用（Bot token が必要）
+  webhook_url: ""         # Webhook を利用する場合は URL をここに
+  bot_token: ""           # JDA を使う場合
+  channel_id: ""
+  send_on_start: true
+  send_on_end: true
+  templates:
+    start: "[SurvivalBattle] ゲームが開始されます。参加人数: {players}"
+    end: "[SurvivalBattle] ゲーム終了: 勝者: {winner} / 参加人数: {players}"

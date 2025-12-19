@@ -1,0 +1,97 @@
+package ham_sandwitch.plugin.survivalbattle.game;
+
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
+
+import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import ham_sandwitch.plugin.survivalbattle.game.GameManager.Team;
+
+public class TeamManager {
+    private final JavaPlugin plugin;
+
+    private final Set<UUID> alivePlayers = new HashSet<>();
+    private final Map<UUID, Team> playerTeams = new HashMap<>();
+    private final EnumMap<Team, Set<UUID>> teamMembers = new EnumMap<>(Team.class);
+
+    public TeamManager(JavaPlugin plugin) {
+        this.plugin = plugin;
+        for (Team t : Team.values()) teamMembers.put(t, new HashSet<>());
+    }
+
+    public Set<UUID> getAlivePlayers() { return alivePlayers; }
+    public Map<UUID, Team> getPlayerTeams() { return playerTeams; }
+    public EnumMap<Team, Set<UUID>> getTeamMembers() { return teamMembers; }
+
+    public void clearAll() {
+        alivePlayers.clear();
+        playerTeams.clear();
+        for (Set<UUID> s : teamMembers.values()) s.clear();
+    }
+
+    public void addAlive(UUID uuid) { if (uuid != null) alivePlayers.add(uuid); }
+    public void removeAlive(UUID uuid) { if (uuid != null) alivePlayers.remove(uuid); }
+
+    public Team getTeam(UUID uuid) { return playerTeams.get(uuid); }
+
+    public void setPlayerTeam(Player p, Team team) {
+        if (p == null) return;
+        // remove from all teams
+        for (Team t : Team.values()) teamMembers.get(t).remove(p.getUniqueId());
+        playerTeams.put(p.getUniqueId(), team);
+        teamMembers.get(team).add(p.getUniqueId());
+    }
+
+    public Team removePlayer(UUID uuid) {
+        if (uuid == null) return null;
+        Team t = playerTeams.remove(uuid);
+        if (t != null) teamMembers.get(t).remove(uuid);
+        alivePlayers.remove(uuid);
+        return t;
+    }
+
+    public void assignTeams(List<Player> players, int fakePlayers) {
+        playerTeams.clear();
+        for (Set<UUID> members : teamMembers.values()) members.clear();
+
+        Team[] teams = Team.values();
+        int teamCount = teams.length;
+        List<Player> copy = new ArrayList<>(players);
+        java.util.Collections.shuffle(copy, new Random());
+        int playerIndex = 0;
+        for (Player p : copy) {
+            Team assigned = teams[playerIndex % teamCount];
+            playerTeams.put(p.getUniqueId(), assigned);
+            teamMembers.get(assigned).add(p.getUniqueId());
+            playerIndex++;
+        }
+    }
+
+    public Team determineWinner() {
+        Map<Team, Integer> aliveCount = new EnumMap<>(Team.class);
+        for (Team t : Team.values()) aliveCount.put(t, 0);
+        for (UUID u : alivePlayers) {
+            Team t = playerTeams.get(u);
+            if (t != null) aliveCount.put(t, aliveCount.get(t) + 1);
+        }
+        int red = aliveCount.getOrDefault(Team.RED, 0);
+        int blue = aliveCount.getOrDefault(Team.BLUE, 0);
+        if (red > blue) return Team.RED;
+        if (blue > red) return Team.BLUE;
+        return null;
+    }
+
+    public Set<UUID> getAllParticipants() {
+        Set<UUID> participants = new HashSet<>();
+        for (Team t : Team.values()) participants.addAll(teamMembers.getOrDefault(t, java.util.Collections.emptySet()));
+        return participants;
+    }
+}

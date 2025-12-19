@@ -1,0 +1,35 @@
+package ham_sandwitch.plugin.survivalbattle.game;
+
+import org.bukkit.Bukkit;
+import org.bukkit.plugin.java.JavaPlugin;
+
+public class DebugManager {
+    private final JavaPlugin plugin;
+    private boolean debugMode = false;
+
+    public DebugManager(JavaPlugin plugin) {
+        this.plugin = plugin;
+    }
+
+    public boolean isDebugMode() {
+        return debugMode;
+    }
+
+    public void setDebugMode(boolean debugMode) {
+        this.debugMode = debugMode;
+        if (debugMode) {
+            Bukkit.broadcastMessage("§e[デバッグ] デバッグモードがONになりました。");
+        } else {
+            Bukkit.broadcastMessage("§e[デバッグ] デバッグモードがOFFになりました。");
+        }
+    }
+
+    // 後方互換のためのエイリアス
+    public void setDebug(boolean enabled) {
+        setDebugMode(enabled);
+    }
+
+    public void setLogDebugMode(boolean enabled) {
+        plugin.getLogger().info("LogDebugMode=" + enabled);
+    }
+}

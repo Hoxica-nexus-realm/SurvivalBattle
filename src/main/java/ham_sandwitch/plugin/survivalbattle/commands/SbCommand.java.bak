@@ -67,7 +67,7 @@ public class SbCommand implements CommandExecutor {
                 return true;
                 
             case "stats":
-                
+                // ゲーム状態を表示
                 sender.sendMessage(gameManager.getGameStats());
                 return true;
                 
@@ -90,10 +90,10 @@ public class SbCommand implements CommandExecutor {
         }
     }
 
-    
+    // 追加: プレイヤー個別統計表示コマンド
     private boolean handleStatsCommand(CommandSender sender, String[] args) {
         if (args.length >= 2) {
-            
+            // プレイヤー名指定
             String playerName = args[1];
             Player target = plugin.getServer().getPlayer(playerName);
             if (target == null) {
@@ -102,7 +102,7 @@ public class SbCommand implements CommandExecutor {
             }
             displayPlayerStats(sender, target.getUniqueId(), target.getName());
         } else if (sender instanceof Player) {
-            
+            // 実行者自身の統計
             Player p = (Player) sender;
             displayPlayerStats(sender, p.getUniqueId(), p.getName());
         } else {
@@ -112,7 +112,7 @@ public class SbCommand implements CommandExecutor {
         return true;
     }
 
-    
+    // 追加: プレイヤー統計表示
     private void displayPlayerStats(CommandSender sender, UUID uuid, String playerName) {
         PlayerStats stats = gameManager.getPlayerStats(uuid);
         
@@ -203,7 +203,7 @@ public class SbCommand implements CommandExecutor {
                 return true;
 
             case "skip":
-                
+                // フェーズをスキップ（デバッグ専用）。IDLEでは不可。
                 gameManager.debugSkipPhase(sender);
                 return true;
                 
@@ -245,4 +245,3 @@ public class SbCommand implements CommandExecutor {
         return true;
     }
 }
-

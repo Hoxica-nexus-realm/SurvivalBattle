@@ -1,0 +1,68 @@
+package ham_sandwitch.plugin.survivalbattle.discord;
+
+import org.bukkit.Bukkit;
+import org.bukkit.plugin.java.JavaPlugin;
+import ham_sandwitch.plugin.survivalbattle.game.GameManager;
+
+/**
+ * Discord通知用の単純なノティファイア。
+ * 実装はWebhookベースで非同期HTTP送信を行う想定です。
+ */
+public class DiscordNotifier {
+    private final JavaPlugin plugin;
+    private final GameManager gameManager;
+
+    public DiscordNotifier(JavaPlugin plugin, GameManager gameManager) {
+        this.plugin = plugin;
+        this.gameManager = gameManager;
+    }
+
+    // 初期化（設定読み取りなど）
+    public void init() {
+        // 設定の検証など（必要なら非同期準備）
+    }
+
+    // 停止時のクリーンアップ
+    public void shutdown() {
+        // JDA を使う場合は shutdown をここで行う
+    }
+
+    // 最小API: ゲーム開始通知（非同期で呼ぶこと）
+    public void sendStartNotification(String message) {
+        if (!plugin.getConfig().getBoolean("discord.enabled", false)) return;
+        if (!plugin.getConfig().getBoolean("discord.send_on_start", true)) return;
+        // 非同期でWebhook送信を行う
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                // 実際のHTTP送信実装はここに入れる（OkHttp 等）
+            } catch (Exception e) {
+                plugin.getLogger().warning("Discord sendStartNotification failed: " + e.getMessage());
+            }
+        });
+    }
+
+    // 最小API: ゲーム終了通知（非同期で呼ぶこと）
+    public void sendEndNotification(String message) {
+        if (!plugin.getConfig().getBoolean("discord.enabled", false)) return;
+        if (!plugin.getConfig().getBoolean("discord.send_on_end", true)) return;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                // 実際のHTTP送信実装はここに入れる（OkHttp 等）
+            } catch (Exception e) {
+                plugin.getLogger().warning("Discord sendEndNotification failed: " + e.getMessage());
+            }
+        });
+    }
+
+    // 任意テキストを送信
+    public void sendPlain(String content) {
+        if (!plugin.getConfig().getBoolean("discord.enabled", false)) return;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                // send
+            } catch (Exception e) {
+                plugin.getLogger().warning("Discord sendPlain failed: " + e.getMessage());
+            }
+        });
+    }
+}

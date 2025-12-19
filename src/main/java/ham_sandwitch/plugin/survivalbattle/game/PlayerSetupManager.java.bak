@@ -29,7 +29,7 @@ public class PlayerSetupManager {
         this.waitingLocation = waitingLocation;
     }
 
-    
+    // ゲーム開始時の回復系バフ（5秒など）
     public void applyStartBuffs(Player p, int seconds) {
         if (p == null || !p.isOnline()) return;
         int ticks = Math.max(0, seconds) * 20;
@@ -37,17 +37,17 @@ public class PlayerSetupManager {
         try {
             PotionEffectType regen = PotionEffectType.getByName("REGENERATION");
             PotionEffectType saturation = PotionEffectType.getByName("SATURATION");
-            if (regen != null) p.addPotionEffect(new PotionEffect(regen, ticks, 2, false)); 
+            if (regen != null) p.addPotionEffect(new PotionEffect(regen, ticks, 2, false)); // 再生 III 相当
             if (saturation != null) p.addPotionEffect(new PotionEffect(saturation, ticks, 1, false));
         } catch (Exception ignored) {}
     }
 
-    
+    // 追加: バトル参加者としてのセットアップ（GameManager から呼ばれる）
     public void setupBattlePlayer(Player p) {
         setupParticipant(p);
     }
 
-    
+    // 追加: 観戦者セットアップ（簡易版）
     public void setupSpectator(Player p) {
         if (p == null || !p.isOnline()) return;
         resetPlayer(p);
@@ -55,7 +55,9 @@ public class PlayerSetupManager {
         p.sendMessage(ChatColor.GRAY + "観戦モードになりました。");
     }
     
-    
+    /**
+     * ロビーにいるプレイヤーのセットアップ
+     */
     public void setupLobbyPlayer(Player p) {
         if (p == null || !p.isOnline()) return;
         
@@ -63,33 +65,37 @@ public class PlayerSetupManager {
         p.setGameMode(GameMode.ADVENTURE);
     }
     
-    
+    /**
+     * 待機場にいるプレイヤーのセットアップ
+     */
     public void setupWaitingPlayer(Player p) {
         if (p == null || !p.isOnline()) return;
         
         resetPlayer(p);
         p.setGameMode(GameMode.ADVENTURE);
         
-        
+        // インベントリを一度クリア
         p.getInventory().clear();
         
-        
+        // アイテムを設定
         p.getInventory().setItem(0, createLobbyItem(Material.RED_BED, "§cロビーに戻る", "ロビーにテレポートします"));
         p.getInventory().setItem(4, createLobbyItem(Material.EMERALD, "§aゲーム開始", "ゲームを開始します"));
         p.getInventory().setItem(8, createLobbyItem(Material.ENDER_EYE, "§e観戦モード", "観戦者になります"));
 
-        
+        // 追加: チーム選択アイテム（config の許可があれば）
         boolean allowTeam = plugin.getConfig().getBoolean("teams.allow_selection_in_waiting", true);
         if (allowTeam) {
             p.getInventory().setItem(2, createLobbyItem(Material.CHEST, "§bチーム選択", "クリックでチームメニューを開きます"));
         }
         
-        
+        // 複数回同期
         p.updateInventory();
         plugin.getServer().getScheduler().runTaskLater(plugin, p::updateInventory, 2L);
     }
     
-    
+    /**
+     * 参加者としてセットアップ
+     */
     public void setupParticipant(Player p) {
         if (p == null || !p.isOnline()) return;
         
@@ -102,7 +108,7 @@ public class PlayerSetupManager {
         p.sendMessage("§a§lゲームに参加しました！頑張ってください！");
     }
 
-    
+    // スポーン直後の短時間保護
     public void applySpawnProtection(Player p, int seconds) {
         if (p == null || !p.isOnline()) return;
         int ticks = Math.max(0, seconds) * 20;
@@ -116,7 +122,9 @@ public class PlayerSetupManager {
         } catch (Exception ignored) {}
     }
     
-    
+    /**
+     * 観戦者としてセットアップ（IDLE中）
+     */
     public void setupIdleSpectator(Player p) {
         if (p == null || !p.isOnline()) return;
         
@@ -130,7 +138,9 @@ public class PlayerSetupManager {
         p.sendMessage("§7観戦モードになりました。ゲームが開始されるまでお待ちください。");
     }
     
-    
+    /**
+     * 観戦者としてセットアップ（ゲーム中）
+     */
     public void setupGameSpectator(Player p, World battleWorld) {
         if (p == null || !p.isOnline()) return;
         
@@ -144,7 +154,9 @@ public class PlayerSetupManager {
         p.sendMessage("§7あなたは観戦者になりました。");
     }
     
-    
+    /**
+     * プレイヤーをリセット
+     */
     private void resetPlayer(Player p) {
         p.setHealth(p.getMaxHealth());
         p.setFoodLevel(20);
@@ -154,13 +166,15 @@ public class PlayerSetupManager {
         p.setAllowFlight(false);
         p.setFireTicks(0);
         p.getActivePotionEffects().forEach(effect -> p.removePotionEffect(effect.getType()));
-        
+        // 追加: tab 表示（player list name）をデフォルトに戻す
         try {
             p.setPlayerListName(null);
         } catch (Exception ignored) {}
     }
     
-    
+    /**
+     * 初期装備を付与
+     */
     private void giveInitialGear(Player p) {
         ConfigurationSection items = plugin.getConfig().getConfigurationSection("items");
         if (items == null) return;
@@ -179,7 +193,9 @@ public class PlayerSetupManager {
         }
     }
     
-    
+    /**
+     * 初期ポーション効果を付与
+     */
     private void applyInitialEffects(Player p) {
         ConfigurationSection effects = plugin.getConfig().getConfigurationSection("effects");
         if (effects == null) return;
@@ -187,7 +203,7 @@ public class PlayerSetupManager {
             try {
                 PotionEffectType type = PotionEffectType.getByName(effectName);
                 if (type == null) {
-                    
+                    // try uppercase variant
                     type = PotionEffectType.getByName(effectName.toUpperCase());
                 }
                 if (type == null) {
@@ -199,7 +215,7 @@ public class PlayerSetupManager {
                 int durationTicks;
 
                 if (value.equalsIgnoreCase("infinite")) {
-                    
+                    // avoid Integer.MAX_VALUE; use a very large value (ticks)
                     durationTicks = 2_000_000;
                 } else {
                     try {
@@ -217,7 +233,9 @@ public class PlayerSetupManager {
         }
     }
     
-    
+    /**
+     * ロビーアイテムを作成
+     */
     private ItemStack createLobbyItem(Material material, String name, String lore) {
         ItemStack item = new ItemStack(material, 1);
         ItemMeta meta = item.getItemMeta();
@@ -231,4 +249,3 @@ public class PlayerSetupManager {
         return item;
     }
 }
-

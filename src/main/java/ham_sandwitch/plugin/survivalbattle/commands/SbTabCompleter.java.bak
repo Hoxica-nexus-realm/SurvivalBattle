@@ -23,7 +23,7 @@ public class SbTabCompleter implements TabCompleter {
         }
 
         if (args.length == 1) {
-            
+            // OP 権限なしの場合、OP コマンドを除外
             if (!sender.isOp()) {
                 List<String> nonOpCommands = new ArrayList<>(MAIN_COMMANDS);
                 nonOpCommands.removeAll(Arrays.asList("debug", "reload"));
@@ -64,4 +64,3 @@ public class SbTabCompleter implements TabCompleter {
                 .collect(Collectors.toList());
     }
 }
-

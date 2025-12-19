@@ -19,7 +19,7 @@ public class GameTimer {
     private int timeLeft;
     private int countdownTimeLeft;
 
-    
+    // ボーダー縮小表示用
     private int borderShrinkTimeLeft = 0;
     private int borderShrinkDuration = 0;
     
@@ -40,9 +40,11 @@ public class GameTimer {
         }
     }
     
-    
+    /**
+     * タイマーを開始
+     */
     public void start() {
-        
+        // 既に実行中のタスクをキャンセル
         if (timerTask != null) {
             timerTask.cancel();
             timerTask = null;
@@ -51,7 +53,7 @@ public class GameTimer {
         bossBar.setVisible(true);
         updateBossBarPlayers();
         
-        
+        // タイマータスク開始
         timerTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             GameManager.Phase phase = gameManager.getCurrentPhase();
             
@@ -61,17 +63,19 @@ public class GameTimer {
                 handleGameTime();
             }
             
-            
+            // 毎秒 BossBar 表示を更新
             updateBossBarPlayers();
 
-            
+            // 追加: 生存プレイヤーの tab HP 更新（GameManager 側で実装）
             try {
                 gameManager.updateTabHpDisplay();
             } catch (Exception ignored) {}
-        }, 0L, 20L);  
+        }, 0L, 20L);  // 即座に開始、20tick(1秒)ごと実行
     }
     
-    
+    /**
+     * BossBar にプレイヤーを追加
+     */
     private void updateBossBarPlayers() {
         try {
             java.util.Set<java.util.UUID> desired = new java.util.HashSet<>();
@@ -80,7 +84,7 @@ public class GameTimer {
                 desired.add(p.getUniqueId());
             }
 
-            
+            // Remove players no longer desired
             java.util.Iterator<java.util.UUID> it = bossBarPlayerIds.iterator();
             while (it.hasNext()) {
                 java.util.UUID id = it.next();
@@ -93,7 +97,7 @@ public class GameTimer {
                 }
             }
 
-            
+            // Add new players
             for (java.util.UUID id : desired) {
                 if (!bossBarPlayerIds.contains(id)) {
                     Player pl = Bukkit.getPlayer(id);
@@ -103,7 +107,7 @@ public class GameTimer {
                 }
             }
         } catch (Exception e) {
-            
+            // Fallback to safe behavior
             try {
                 bossBar.removeAll();
                 bossBarPlayerIds.clear();
@@ -111,7 +115,9 @@ public class GameTimer {
         }
     }
     
-    
+    /**
+     * タイマーを停止
+     */
     public void stop() {
         if (timerTask != null) {
             timerTask.cancel();
@@ -119,7 +125,9 @@ public class GameTimer {
         }
     }
     
-    
+    /**
+     * カウントダウンフェーズの処理
+     */
     private void handleCountdown() {
         bossBar.setVisible(false);
 
@@ -130,7 +138,7 @@ public class GameTimer {
             gameManager.sendGameMessage("[サバイバルバトロワ] ゲーム開始！");
             playSound(org.bukkit.Sound.ENTITY_ENDER_DRAGON_GROWL);
         } else {
-            
+            // 毎秒チャットで通知（参加者のみ）
             gameManager.sendGameMessage("[サバイバルバトロワ] ゲーム開始まで " + countdownTimeLeft + "秒");
             if (countdownTimeLeft <= 5) {
                 playSound(org.bukkit.Sound.BLOCK_NOTE_BLOCK_HAT);
@@ -138,9 +146,11 @@ public class GameTimer {
         }
     }
     
-    
+    /**
+     * COLLECTION/PVPフェーズの処理
+     */
     private void handleGameTime() {
-        
+        // 大切: borderShrinkTimeLeft があればそれを優先表示しつつ timeLeft も減らす
         if (borderShrinkTimeLeft > 0 && gameManager.getCurrentPhase() == GameManager.Phase.PVP) {
             borderShrinkTimeLeft--;
             double progress = Math.max(0.0, Math.min(1.0, (double) borderShrinkTimeLeft / Math.max(1, borderShrinkDuration)));
@@ -151,19 +161,19 @@ public class GameTimer {
             bossBar.setTitle("§cワールドボーダー縮小まで §e" + minutes + ":" + String.format("%02d", seconds));
             bossBar.setColor(BarColor.RED);
 
-            
+            // なお、通常の PvP 残り時間も減らす（プレイヤーに合計時間を示すため）
             timeLeft--;
             
             if (borderShrinkTimeLeft <= 0) {
-                
+                // 縮小終了時は特別効果音
                 playSound(org.bukkit.Sound.ENTITY_WITHER_SPAWN);
-                
+                // 続行して通常の PvP ボスバー表示に戻る（次 tick）
             }
-            
+            // 他の通知は下段の通常処理に委ねる（return して二重処理を防ぐ）
             return;
         }
 
-        
+        // 既存の timeLeft 処理（COLLECTION/PVP 両方で動作）
         timeLeft--;
         
         GameManager.Phase phase = gameManager.getCurrentPhase();
@@ -207,7 +217,9 @@ public class GameTimer {
         }
     }
     
-    
+    /**
+     * 効果音を全プレイヤーに再生
+     */
     private void playSound(org.bukkit.Sound sound) {
         for (Player p : gameManager.getPlayersForBossBar()) {
             p.playSound(p.getLocation(), sound, 1.0f, 1.0f);
@@ -227,7 +239,7 @@ public class GameTimer {
         this.borderShrinkTimeLeft = this.borderShrinkDuration;
     }
 
-    
+    // reset shrink info when stopping or starting new phases
     public void resetBorderShrinkInfo() {
         this.borderShrinkDuration = 0;
         this.borderShrinkTimeLeft = 0;
@@ -237,7 +249,7 @@ public class GameTimer {
         return bossBar;
     }
 
-    
+    // 追加: BossBar を完全にクリア
     public void clearBossBar() {
         try {
             bossBar.removeAll();
@@ -261,18 +273,18 @@ public class GameTimer {
         return new GameTime(0);
     }
 
-    
+    // 追加: フォーマット済みの残り時間
     public String getFormattedRemainingTime() {
         GameTime rt = getRemainingTime();
         return rt.minutes + ":" + String.format("%02d", rt.seconds);
     }
 
-    
+    // 追加: 縮小がアクティブかどうか
     public boolean isShrinkActive() {
         return borderShrinkTimeLeft > 0;
     }
 
-    
+    // 追加: フォーマット済みの縮小残り時間
     public String getFormattedShrinkTimeLeft() {
         int sec = Math.max(0, borderShrinkTimeLeft);
         int m = sec / 60;
@@ -280,7 +292,7 @@ public class GameTimer {
         return m + ":" + String.format("%02d", s);
     }
 
-    
+    // デバッグ: 現在フェーズの残りを1秒にする
     public void debugSkip() {
         GameManager.Phase phase = gameManager.getCurrentPhase();
         if (phase == GameManager.Phase.COUNTDOWN) {
@@ -290,4 +302,3 @@ public class GameTimer {
         }
     }
 }
-
